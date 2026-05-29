@@ -1,0 +1,22 @@
+{
+  "name": "allo-joy",
+  "version": "1.0.0",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "npm run dev -w @allo-joy/api",
+    "build": "npm run build -w @allo-joy/types && npm run build -w @allo-joy/api",
+    "test": "npm test -w @allo-joy/api",
+    "lint": "npm run lint --workspaces --if-present",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "db:migrate": "npm run db:migrate -w @allo-joy/api",
+    "db:generate": "npm run db:generate -w @allo-joy/api",
+    "db:studio": "npm run db:studio -w @allo-joy/api"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  }
+}

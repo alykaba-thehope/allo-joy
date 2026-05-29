@@ -1,0 +1,27 @@
+graphhopper:
+  datareader.file: /data/guinea-latest.osm.pbf
+  graph.location: /data/graph-cache
+
+  profiles:
+    - name: car
+      vehicle: car
+      weighting: fastest
+      turn_costs: false
+    - name: motorcycle
+      vehicle: motorcycle
+      weighting: fastest
+      turn_costs: false
+    - name: foot
+      vehicle: foot
+      weighting: shortest
+
+  profiles_ch:
+    - profile: car
+    - profile: foot
+
+server:
+  application_connectors:
+    - type: http
+      port: 8989
+  request_log:
+    appenders: []

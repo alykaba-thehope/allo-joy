@@ -1,0 +1,26 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "agent-web",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev"],
+      "cwd": "apps/agent-web",
+      "port": 5173
+    },
+    {
+      "name": "supervisor-web",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev"],
+      "cwd": "apps/supervisor-web",
+      "port": 5174
+    },
+    {
+      "name": "provider-web",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev"],
+      "cwd": "apps/provider-web",
+      "port": 5175
+    }
+  ]
+}

@@ -1,0 +1,39 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  *, *::before, *::after { box-sizing: border-box; }
+  html, body, #root { height: 100%; overflow: hidden; background: #0f172a; }
+  ::-webkit-scrollbar { width: 5px; height: 5px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { @apply bg-slate-600 rounded-full; }
+}
+
+@layer components {
+  .card {
+    @apply bg-slate-800 border border-slate-700 rounded-xl;
+  }
+  .card-header {
+    @apply flex items-center justify-between px-4 py-3 border-b border-slate-700/60;
+  }
+  .label {
+    @apply text-xs font-semibold text-slate-400 uppercase tracking-wider;
+  }
+  .btn-sm {
+    @apply inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium
+           transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-joy-500;
+  }
+  .btn-primary  { @apply btn-sm bg-joy-600 hover:bg-joy-500 text-white; }
+  .btn-ghost    { @apply btn-sm hover:bg-slate-700 text-slate-300 hover:text-white; }
+  .btn-danger   { @apply btn-sm bg-red-900/40 hover:bg-red-900/70 text-red-300 border border-red-700/40; }
+
+  .status-dot-available { @apply w-2 h-2 rounded-full bg-green-400; }
+  .status-dot-busy      { @apply w-2 h-2 rounded-full bg-amber-400; }
+  .status-dot-break     { @apply w-2 h-2 rounded-full bg-blue-400; }
+  .status-dot-offline   { @apply w-2 h-2 rounded-full bg-slate-500; }
+
+  .alert-warning { @apply flex items-start gap-3 p-3 bg-amber-900/20 border border-amber-700/40 rounded-lg text-sm; }
+  .alert-danger  { @apply flex items-start gap-3 p-3 bg-red-900/20 border border-red-700/40 rounded-lg text-sm; }
+  .alert-info    { @apply flex items-start gap-3 p-3 bg-blue-900/20 border border-blue-700/40 rounded-lg text-sm; }
+}

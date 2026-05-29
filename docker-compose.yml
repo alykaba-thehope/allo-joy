@@ -1,0 +1,155 @@
+version: '3.9'
+
+services:
+  # ── Données ──────────────────────────────────────────────────────────────────
+  postgres:
+    image: postgis/postgis:16-3.4
+    container_name: allojoy-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER:     allojoy
+      POSTGRES_PASSWORD: allojoy_dev
+      POSTGRES_DB:       allojoy
+    ports:
+      - '5432:5432'
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U allojoy']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    container_name: allojoy-redis
+    restart: unless-stopped
+    ports:
+      - '6379:6379'
+    volumes:
+      - redis_data:/data
+    command: redis-server --save 60 1 --loglevel warning
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  # ── Routing ───────────────────────────────────────────────────────────────────
+  graphhopper:
+    image: israelhikingmap/graphhopper:latest
+    container_name: allojoy-graphhopper
+    restart: unless-stopped
+    ports:
+      - '8989:8989'
+    volumes:
+      - graphhopper_data:/data
+      - ./infra/graphhopper:/config
+    environment:
+      JAVA_OPTS: '-Xmx512m -Xms256m'
+    # Lance: bash infra/scripts/setup-osm.sh avant le premier démarrage
+
+  # ── API Fastify ───────────────────────────────────────────────────────────────
+  api:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    container_name: allojoy-api
+    restart: unless-stopped
+    ports:
+      - '3000:3000'
+    environment:
+      DATABASE_URL:   postgresql://allojoy:allojoy_dev@postgres:5432/allojoy
+      REDIS_URL:      redis://redis:6379
+      GRAPHHOPPER_URL: http://graphhopper:8989
+      JWT_SECRET:     dev-secret-change-in-production
+      NODE_ENV:       production
+      PORT:           3000
+      LOG_LEVEL:      info
+      # Africa's Talking — laisser vide en dev pour désactiver l'envoi réel
+      AFRICASTALKING_API_KEY:      ""
+      AFRICASTALKING_USERNAME:     sandbox
+      AFRICASTALKING_SENDER_ID:    AlloJoy
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ['CMD-SHELL', 'wget -qO- http://localhost:3000/health || exit 1']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+
+  # ── Worker SMS (BullMQ) ───────────────────────────────────────────────────────
+  worker-sms:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    container_name: allojoy-worker-sms
+    restart: unless-stopped
+    command: node dist/workers/sms.worker.js
+    environment:
+      DATABASE_URL:   postgresql://allojoy:allojoy_dev@postgres:5432/allojoy
+      REDIS_URL:      redis://redis:6379
+      NODE_ENV:       production
+      LOG_LEVEL:      warn
+      AFRICASTALKING_API_KEY:      ""
+      AFRICASTALKING_USERNAME:     sandbox
+      AFRICASTALKING_SENDER_ID:    AlloJoy
+    depends_on:
+      redis:
+        condition: service_healthy
+    working_dir: /app/apps/api
+
+  # ── Asterisk (téléphonie 3030) ───────────────────────────────────────────────
+  asterisk:
+    build:
+      context: ./infra/asterisk
+    container_name: allojoy-asterisk
+    restart: unless-stopped
+    ports:
+      - '5060:5060/udp'
+      - '5060:5060/tcp'
+      - '8088:8088'           # ARI HTTP
+      - '5038:5038'           # AMI
+      - '10000-10100:10000-10100/udp'  # RTP media
+    environment:
+      API_URL:          http://api:3000
+      ARI_PASSWORD:     ari-dev-password
+      AMI_SECRET:       ami-dev-secret
+    depends_on:
+      api:
+        condition: service_healthy
+    volumes:
+      - asterisk_recordings:/var/spool/asterisk/monitor
+    profiles:
+      - telephony   # démarrer avec : docker compose --profile telephony up
+
+  # ── Dev uniquement : migration + seed auto au démarrage ──────────────────────
+  migrate:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    container_name: allojoy-migrate
+    command: >
+      sh -c "
+        npx prisma migrate deploy &&
+        npx tsx prisma/seed.ts
+      "
+    environment:
+      DATABASE_URL: postgresql://allojoy:allojoy_dev@postgres:5432/allojoy
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: 'no'
+    working_dir: /app/apps/api
+    profiles:
+      - setup
+
+volumes:
+  postgres_data:
+  redis_data:
+  graphhopper_data:
+  asterisk_recordings:

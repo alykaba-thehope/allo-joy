@@ -1,0 +1,28 @@
+# Overrides DEV : monte le code source et lance tsx watch
+# Activé automatiquement par docker-compose up (pas besoin de -f)
+version: '3.9'
+
+services:
+  api:
+    build: ~
+    image: ~
+    # Remplace le build par l'image node directe en dev
+    image: node:20-alpine
+    command: sh -c "npm install && npm run dev -w @allo-joy/api"
+    volumes:
+      - .:/app
+      - /app/node_modules
+    working_dir: /app
+    environment:
+      NODE_ENV: development
+      LOG_LEVEL: debug
+
+  worker-sms:
+    image: node:20-alpine
+    command: sh -c "npm install && npm run worker:sms -w @allo-joy/api"
+    volumes:
+      - .:/app
+      - /app/node_modules
+    working_dir: /app
+    environment:
+      NODE_ENV: development

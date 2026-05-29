@@ -1,0 +1,193 @@
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+env:
+  AWS_REGION:     af-south-1
+  ECR_REPOSITORY: allojoy-api
+  ECS_CLUSTER:    allojoy-prod
+  ECS_SERVICE:    allojoy-api
+  CONTAINER_NAME: allojoy-api
+
+jobs:
+  # ── Tests obligatoires avant déploiement ─────────────────────────────────────
+  test:
+    uses: ./.github/workflows/ci.yml
+
+  # ── Build & Push image Docker → ECR ──────────────────────────────────────────
+  build-push:
+    name: Build & Push to ECR
+    runs-on: ubuntu-latest
+    needs: test
+    outputs:
+      image: ${{ steps.build.outputs.image }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build, tag, and push image to ECR
+        id: build
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          IMAGE_TAG:    ${{ github.sha }}
+        run: |
+          IMAGE="$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG"
+          docker buildx build \
+            --file apps/api/Dockerfile \
+            --tag "$IMAGE" \
+            --tag "$ECR_REGISTRY/$ECR_REPOSITORY:latest" \
+            --cache-from type=registry,ref="$ECR_REGISTRY/$ECR_REPOSITORY:cache" \
+            --cache-to   type=registry,ref="$ECR_REGISTRY/$ECR_REPOSITORY:cache",mode=max \
+            --push \
+            .
+          echo "image=$IMAGE" >> "$GITHUB_OUTPUT"
+
+  # ── Migrations Prisma ─────────────────────────────────────────────────────────
+  migrate:
+    name: Prisma Migrate
+    runs-on: ubuntu-latest
+    needs: build-push
+    environment: production
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - run: npm ci
+
+      - name: Run migrations
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: npm run db:migrate:prod -w @allo-joy/api
+
+  # ── Deploy sur ECS Fargate ────────────────────────────────────────────────────
+  deploy:
+    name: Deploy to ECS
+    runs-on: ubuntu-latest
+    needs: [build-push, migrate]
+    environment: production
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Download current task definition
+        run: |
+          aws ecs describe-task-definition \
+            --task-definition ${{ env.ECS_SERVICE }} \
+            --query taskDefinition \
+            > task-definition.json
+
+      - name: Update image in task definition
+        id: task-def
+        uses: aws-actions/amazon-ecs-render-task-definition@v1
+        with:
+          task-definition: task-definition.json
+          container-name:  ${{ env.CONTAINER_NAME }}
+          image:           ${{ needs.build-push.outputs.image }}
+
+      - name: Deploy to ECS
+        uses: aws-actions/amazon-ecs-deploy-task-definition@v1
+        with:
+          task-definition:        ${{ steps.task-def.outputs.task-definition }}
+          service:                ${{ env.ECS_SERVICE }}
+          cluster:                ${{ env.ECS_CLUSTER }}
+          wait-for-service-stability: true
+
+  # ── Build & Deploy apps web → S3 + CloudFront ────────────────────────────────
+  deploy-web:
+    name: Deploy Web Apps
+    runs-on: ubuntu-latest
+    needs: test
+    environment: production
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - run: npm ci
+
+      - name: Build all web apps
+        env:
+          VITE_API_URL: https://api.allojoy.gn
+        run: |
+          npm run build -w @allo-joy/agent-web
+          npm run build -w @allo-joy/supervisor-web
+          npm run build -w @allo-joy/provider-web
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Deploy agent-web → S3
+        run: |
+          aws s3 sync apps/agent-web/dist \
+            s3://${{ secrets.S3_BUCKET_AGENT }} \
+            --delete --cache-control "max-age=31536000,immutable"
+          aws s3 cp apps/agent-web/dist/index.html \
+            s3://${{ secrets.S3_BUCKET_AGENT }}/index.html \
+            --cache-control "no-cache,no-store,must-revalidate"
+
+      - name: Deploy supervisor-web → S3
+        run: |
+          aws s3 sync apps/supervisor-web/dist \
+            s3://${{ secrets.S3_BUCKET_SUPERVISOR }} \
+            --delete --cache-control "max-age=31536000,immutable"
+          aws s3 cp apps/supervisor-web/dist/index.html \
+            s3://${{ secrets.S3_BUCKET_SUPERVISOR }}/index.html \
+            --cache-control "no-cache,no-store,must-revalidate"
+
+      - name: Deploy provider-web → S3
+        run: |
+          aws s3 sync apps/provider-web/dist \
+            s3://${{ secrets.S3_BUCKET_PROVIDER }} \
+            --delete --cache-control "max-age=31536000,immutable"
+          aws s3 cp apps/provider-web/dist/index.html \
+            s3://${{ secrets.S3_BUCKET_PROVIDER }}/index.html \
+            --cache-control "no-cache,no-store,must-revalidate"
+
+      - name: Invalidate CloudFront caches
+        run: |
+          aws cloudfront create-invalidation \
+            --distribution-id ${{ secrets.CF_DIST_AGENT }}     --paths "/*"
+          aws cloudfront create-invalidation \
+            --distribution-id ${{ secrets.CF_DIST_SUPERVISOR }} --paths "/*"
+          aws cloudfront create-invalidation \
+            --distribution-id ${{ secrets.CF_DIST_PROVIDER }}   --paths "/*"

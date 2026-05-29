@@ -1,0 +1,53 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  *, *::before, *::after { box-sizing: border-box; }
+  html, body, #root {
+    height: 100%;
+    background: #0f172a;
+    color: #f1f5f9;
+    font-family: 'Inter', system-ui, sans-serif;
+    -webkit-tap-highlight-color: transparent;
+  }
+  ::-webkit-scrollbar { width: 4px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { @apply bg-slate-600 rounded-full; }
+}
+
+@layer components {
+  .screen {
+    @apply flex flex-col h-full overflow-hidden;
+  }
+
+  .card {
+    @apply bg-slate-800 border border-slate-700/60 rounded-2xl;
+  }
+
+  .btn {
+    @apply inline-flex items-center justify-center gap-2 rounded-xl font-semibold
+           transition-all active:scale-95 select-none focus-visible:outline-none
+           focus-visible:ring-2 focus-visible:ring-joy-500;
+  }
+  .btn-lg      { @apply btn text-base px-6 py-4; }
+  .btn-md      { @apply btn text-sm px-4 py-2.5; }
+  .btn-primary { @apply bg-joy-600 hover:bg-joy-500 text-white; }
+  .btn-success { @apply bg-green-600 hover:bg-green-500 text-white; }
+  .btn-danger  { @apply bg-red-600 hover:bg-red-500 text-white; }
+  .btn-ghost   { @apply hover:bg-slate-700 text-slate-300 hover:text-white; }
+
+  .status-disponible { @apply bg-green-500/20 text-green-400 border border-green-500/30; }
+  .status-occupe     { @apply bg-amber-500/20 text-amber-400 border border-amber-500/30; }
+  .status-hors-ligne { @apply bg-slate-600/40 text-slate-400 border border-slate-600/40; }
+
+  .nav-item {
+    @apply flex flex-col items-center gap-0.5 px-5 py-2 text-xs font-medium
+           transition-colors text-slate-500;
+  }
+  .nav-item.active { color: #38bdf8; }
+
+  .badge {
+    @apply inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium;
+  }
+}

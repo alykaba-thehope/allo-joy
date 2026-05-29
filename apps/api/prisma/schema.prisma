@@ -1,0 +1,292 @@
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["postgresqlExtensions"]
+}
+
+datasource db {
+  provider   = "postgresql"
+  url        = env("DATABASE_URL")
+  extensions = [postgis(version: "3.4"), pgcrypto, unaccent]
+}
+
+// ─── ENUMS ───────────────────────────────────────────────────────────────────
+
+enum Language {
+  fr
+  pular
+  malinke
+  soussou
+}
+
+enum Commune {
+  Ratoma
+  Matoto
+  Matam
+  Dixinn
+  Kaloum
+}
+
+enum ProviderStatus {
+  DISPONIBLE
+  OCCUPE
+  HORS_LIGNE
+  SUSPENDU
+}
+
+enum ProviderTier {
+  GRATUIT
+  BRONZE
+  ARGENT
+  OR
+}
+
+enum TicketStatus {
+  OUVERT
+  EN_COURS
+  MISE_EN_RELATION
+  RESOLU
+  FERME
+  ANNULE
+}
+
+enum PlaceType {
+  SANTE
+  ADMINISTRATION
+  COMMERCE
+  RELIGION
+  EDUCATION
+  TRANSPORT
+  REPERE
+  AUTRE
+}
+
+enum AgentRole {
+  agent
+  superviseur
+  cartographe
+  admin
+  directeur
+}
+
+enum CanalOrigine {
+  PHONE
+  WHATSAPP
+  USSD
+  APP
+  WEB
+}
+
+enum TicketCloture {
+  RESOLU
+  ANNULE
+  FERME
+}
+
+// ─── CITIZENS ─────────────────────────────────────────────────────────────────
+
+model Citizen {
+  id               String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  telephone        String        @unique @db.VarChar(20)
+  prenom           String?       @db.VarChar(100)
+  nomFamille       String?       @db.VarChar(100)
+  commune          Commune?
+  languePreferee   Language      @default(fr)
+  canalOrigine     CanalOrigine  @default(PHONE)
+  notes            String        @default("")
+  nbDemandesTotales Int          @default(0)
+  createdAt        DateTime      @default(now())
+  updatedAt        DateTime      @updatedAt
+
+  tickets Ticket[]
+
+  @@index([telephone])
+  @@index([canalOrigine])
+  @@map("citizens")
+}
+
+// ─── AGENTS ───────────────────────────────────────────────────────────────────
+
+model Agent {
+  id              String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  telephone       String    @unique @db.VarChar(20)
+  prenom          String    @db.VarChar(100)
+  nomFamille      String    @db.VarChar(100)
+  email           String?   @unique @db.VarChar(200)
+  role            AgentRole @default(agent)
+  langues         Language[]
+  isActive        Boolean   @default(true)
+  lastSeenAt      DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  tickets    Ticket[]
+  auditLogs  AuditLog[]
+  sessions   AgentSession[]
+
+  @@map("agents")
+}
+
+model AgentSession {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  agentId   String   @db.Uuid
+  token     String   @unique @db.VarChar(500)
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  agent Agent @relation(fields: [agentId], references: [id], onDelete: Cascade)
+
+  @@index([token])
+  @@map("agent_sessions")
+}
+
+// ─── PROVIDERS ────────────────────────────────────────────────────────────────
+
+model Provider {
+  id                       String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  nomComplet               String         @db.VarChar(200)
+  telephonePrincipal       String         @unique @db.VarChar(20)
+  telephoneBackup          String?        @db.VarChar(20)
+  categoriePrincipale      String         @db.VarChar(50)
+  sousCategories           String[]       @default([])
+  communesIntervention     Commune[]
+  // PostGIS: position stockée dans une colonne non-Prisma, gérée via SQL raw
+  noteMoyenne              Decimal        @default(0) @db.Decimal(3, 2)
+  nbMissionsTotales        Int            @default(0)
+  nbMissionsReussies       Int            @default(0)
+  tauxReactivite           Decimal        @default(0) @db.Decimal(4, 3)
+  statut                   ProviderStatus @default(HORS_LIGNE)
+  abonnementTier           ProviderTier   @default(GRATUIT)
+  dateExpirationAbonnement DateTime?
+  dateVerificationTerrain  DateTime?
+  createdAt                DateTime       @default(now())
+  updatedAt                DateTime       @updatedAt
+
+  tickets Ticket[]
+  ratings ProviderRating[]
+
+  @@index([categoriePrincipale, statut])
+  @@map("providers")
+}
+
+// La colonne PostGIS est créée via migration SQL raw (voir migrations/)
+// ALTER TABLE providers ADD COLUMN position_gps geography(POINT, 4326);
+// CREATE INDEX idx_providers_position_gps ON providers USING GIST(position_gps);
+// CREATE INDEX idx_providers_available ON providers(categorie_principale, note_moyenne DESC) WHERE statut = 'DISPONIBLE';
+
+model ProviderRating {
+  id           String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  providerId   String   @db.Uuid
+  ticketId     String   @db.Uuid
+  note         Int
+  commentaire  String?
+  createdAt    DateTime @default(now())
+
+  provider Provider @relation(fields: [providerId], references: [id], onDelete: Cascade)
+  ticket   Ticket   @relation(fields: [ticketId], references: [id])
+
+  @@unique([ticketId])
+  @@map("provider_ratings")
+}
+
+// ─── TICKETS ──────────────────────────────────────────────────────────────────
+
+model Ticket {
+  id                  String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  citizenId           String        @db.Uuid
+  agentId             String?       @db.Uuid
+  statut              TicketStatus  @default(OUVERT)
+  categorieService    String        @db.VarChar(100)
+  commune             Commune?
+  langue              Language      @default(fr)
+  canalOrigine        CanalOrigine  @default(PHONE)
+  descriptionBesoin   String
+  providerId          String?       @db.Uuid
+  callId              String?       @db.VarChar(100)
+  rappelProgrammeAt   DateTime?
+  notes               String        @default("")
+  closedAt            DateTime?
+  createdAt           DateTime      @default(now())
+  updatedAt           DateTime      @updatedAt
+
+  citizen  Citizen         @relation(fields: [citizenId], references: [id])
+  agent    Agent?          @relation(fields: [agentId], references: [id])
+  provider Provider?       @relation(fields: [providerId], references: [id])
+  rating   ProviderRating?
+
+  @@index([statut])
+  @@index([agentId])
+  @@index([citizenId])
+  @@index([canalOrigine])
+  @@index([rappelProgrammeAt])
+  @@map("tickets")
+}
+
+// ─── PLACES ───────────────────────────────────────────────────────────────────
+
+model Place {
+  id               String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  nomOfficiel      String    @db.VarChar(300)
+  nomLocal         String?   @db.VarChar(300)
+  nomPular         String?   @db.VarChar(300)
+  nomMalinke       String?   @db.VarChar(300)
+  nomSoussou       String?   @db.VarChar(300)
+  commune          Commune
+  quartier         String?   @db.VarChar(100)
+  // PostGIS: position gérée via SQL raw
+  precisionMetres  Int       @default(50)
+  typeLieu         PlaceType @default(AUTRE)
+  repereProximite  Json      @default("[]")
+  photosFacadeUrl  String[]  @default([])
+  horaires         Json?
+  contact          String?   @db.VarChar(50)
+  dateVerification DateTime?
+  contributions    Json      @default("[]")
+  isVerified       Boolean   @default(false)
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  @@index([commune, typeLieu])
+  @@map("places")
+}
+
+// ALTER TABLE places ADD COLUMN position geography(POINT, 4326) NOT NULL;
+// CREATE INDEX idx_places_position ON places USING GIST(position);
+
+// ─── CALLS ────────────────────────────────────────────────────────────────────
+
+model Call {
+  id           String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  externalId   String?   @unique @db.VarChar(100)
+  citizenPhone String    @db.VarChar(20)
+  operateur    String?   @db.VarChar(50)
+  agentId      String?   @db.Uuid
+  langue       Language?
+  dureeSecondes Int?
+  recordingUrl  String?
+  startedAt    DateTime
+  endedAt      DateTime?
+  createdAt    DateTime  @default(now())
+
+  @@index([citizenPhone])
+  @@index([agentId])
+  @@index([startedAt])
+  @@map("calls")
+}
+
+// ─── AUDIT LOG ────────────────────────────────────────────────────────────────
+
+model AuditLog {
+  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  agentId    String   @db.Uuid
+  action     String   @db.VarChar(100)
+  resourceType String @db.VarChar(50)
+  resourceId String   @db.VarChar(100)
+  ipAddress  String?  @db.VarChar(45)
+  createdAt  DateTime @default(now())
+
+  agent Agent @relation(fields: [agentId], references: [id])
+
+  @@index([agentId, createdAt])
+  @@index([resourceType, resourceId])
+  @@map("audit_logs")
+}
