@@ -9,11 +9,18 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  AWS_REGION:     af-south-1
-  ECR_REPOSITORY: allojoy-prod-api
-  ECS_CLUSTER:    allojoy-prod-cluster
-  ECS_SERVICE:    allojoy-prod-api
-  CONTAINER_NAME: allojoy-api
+  AWS_REGION:      af-south-1
+  ECR_REPOSITORY:  allojoy-prod-api
+  ECR_REGISTRY:    624782990005.dkr.ecr.af-south-1.amazonaws.com
+  ECS_CLUSTER:     allojoy-prod-cluster
+  ECS_SERVICE:     allojoy-prod-api
+  CONTAINER_NAME:  allojoy-api
+  S3_AGENT:        allojoy-prod-web-agent
+  S3_SUPERVISOR:   allojoy-prod-web-supervisor
+  S3_PROVIDER:     allojoy-prod-web-provider
+  CF_AGENT:        EBVFZJ8JKWN30
+  CF_SUPERVISOR:   E253Z6V6CGZ6LQ
+  CF_PROVIDER:     E1U4TAVLQO5D1Y
 
 jobs:
   # ── Typecheck avant déploiement ───────────────────────────────────────────────
@@ -45,18 +52,16 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Configure AWS credentials
+      - name: Export AWS credentials
         run: |
           echo "AWS_ACCESS_KEY_ID=${{ secrets.AWS_ACCESS_KEY_ID }}"         >> $GITHUB_ENV
           echo "AWS_SECRET_ACCESS_KEY=${{ secrets.AWS_SECRET_ACCESS_KEY }}" >> $GITHUB_ENV
-          echo "AWS_DEFAULT_REGION=us-east-1"                               >> $GITHUB_ENV
+          echo "AWS_DEFAULT_REGION=af-south-1"                              >> $GITHUB_ENV
 
       - name: Login to Amazon ECR
-        id: login-ecr
-        uses: aws-actions/amazon-ecr-login@v2
-        with:
-          registries: "624782990005"
-          region: af-south-1
+        run: |
+          aws ecr get-login-password --region af-south-1 \
+            | docker login --username AWS --password-stdin ${{ env.ECR_REGISTRY }}
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -64,16 +69,15 @@ jobs:
       - name: Build, tag, and push image to ECR
         id: build
         env:
-          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
-          IMAGE_TAG:    ${{ github.sha }}
+          IMAGE_TAG: ${{ github.sha }}
         run: |
-          IMAGE="$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG"
+          IMAGE="${{ env.ECR_REGISTRY }}/${{ env.ECR_REPOSITORY }}:$IMAGE_TAG"
           docker buildx build \
             --file apps/api/Dockerfile \
             --tag "$IMAGE" \
-            --tag "$ECR_REGISTRY/$ECR_REPOSITORY:latest" \
-            --cache-from type=registry,ref="$ECR_REGISTRY/$ECR_REPOSITORY:cache" \
-            --cache-to   type=registry,ref="$ECR_REGISTRY/$ECR_REPOSITORY:cache",mode=max \
+            --tag "${{ env.ECR_REGISTRY }}/${{ env.ECR_REPOSITORY }}:latest" \
+            --cache-from type=registry,ref="${{ env.ECR_REGISTRY }}/${{ env.ECR_REPOSITORY }}:cache" \
+            --cache-to   type=registry,ref="${{ env.ECR_REGISTRY }}/${{ env.ECR_REPOSITORY }}:cache",mode=max \
             --push \
             .
           echo "image=$IMAGE" >> "$GITHUB_OUTPUT"
@@ -87,11 +91,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Configure AWS credentials
+      - name: Export AWS credentials
         run: |
           echo "AWS_ACCESS_KEY_ID=${{ secrets.AWS_ACCESS_KEY_ID }}"         >> $GITHUB_ENV
           echo "AWS_SECRET_ACCESS_KEY=${{ secrets.AWS_SECRET_ACCESS_KEY }}" >> $GITHUB_ENV
-          echo "AWS_DEFAULT_REGION=us-east-1"                               >> $GITHUB_ENV
+          echo "AWS_DEFAULT_REGION=af-south-1"                              >> $GITHUB_ENV
 
       - name: Download current task definition
         run: |
@@ -142,50 +146,50 @@ jobs:
           npm run build -w @allo-joy/supervisor-web
           npm run build -w @allo-joy/provider-web
 
-      - name: Configure AWS credentials
+      - name: Export AWS credentials
         run: |
           echo "AWS_ACCESS_KEY_ID=${{ secrets.AWS_ACCESS_KEY_ID }}"         >> $GITHUB_ENV
           echo "AWS_SECRET_ACCESS_KEY=${{ secrets.AWS_SECRET_ACCESS_KEY }}" >> $GITHUB_ENV
-          echo "AWS_DEFAULT_REGION=us-east-1"                               >> $GITHUB_ENV
+          echo "AWS_DEFAULT_REGION=af-south-1"                              >> $GITHUB_ENV
 
       - name: Deploy agent-web → S3
         run: |
           aws s3 sync apps/agent-web/dist \
-            s3://${{ secrets.S3_AGENT }} \
+            s3://${{ env.S3_AGENT }} \
             --region ${{ env.AWS_REGION }} \
             --delete --cache-control "max-age=31536000,immutable"
           aws s3 cp apps/agent-web/dist/index.html \
-            s3://${{ secrets.S3_AGENT }}/index.html \
+            s3://${{ env.S3_AGENT }}/index.html \
             --region ${{ env.AWS_REGION }} \
             --cache-control "no-cache,no-store,must-revalidate"
 
       - name: Deploy supervisor-web → S3
         run: |
           aws s3 sync apps/supervisor-web/dist \
-            s3://${{ secrets.S3_SUPERVISOR }} \
+            s3://${{ env.S3_SUPERVISOR }} \
             --region ${{ env.AWS_REGION }} \
             --delete --cache-control "max-age=31536000,immutable"
           aws s3 cp apps/supervisor-web/dist/index.html \
-            s3://${{ secrets.S3_SUPERVISOR }}/index.html \
+            s3://${{ env.S3_SUPERVISOR }}/index.html \
             --region ${{ env.AWS_REGION }} \
             --cache-control "no-cache,no-store,must-revalidate"
 
       - name: Deploy provider-web → S3
         run: |
           aws s3 sync apps/provider-web/dist \
-            s3://${{ secrets.S3_PROVIDER }} \
+            s3://${{ env.S3_PROVIDER }} \
             --region ${{ env.AWS_REGION }} \
             --delete --cache-control "max-age=31536000,immutable"
           aws s3 cp apps/provider-web/dist/index.html \
-            s3://${{ secrets.S3_PROVIDER }}/index.html \
+            s3://${{ env.S3_PROVIDER }}/index.html \
             --region ${{ env.AWS_REGION }} \
             --cache-control "no-cache,no-store,must-revalidate"
 
       - name: Invalidate CloudFront caches
         run: |
           aws cloudfront create-invalidation \
-            --distribution-id ${{ secrets.CF_DIST_AGENT }}      --paths "/*"
+            --distribution-id ${{ env.CF_AGENT }}      --paths "/*"
           aws cloudfront create-invalidation \
-            --distribution-id ${{ secrets.CF_DIST_SUPERVISOR }}  --paths "/*"
+            --distribution-id ${{ env.CF_SUPERVISOR }}  --paths "/*"
           aws cloudfront create-invalidation \
-            --distribution-id ${{ secrets.CF_DIST_PROVIDER }}    --paths "/*"
+            --distribution-id ${{ env.CF_PROVIDER }}    --paths "/*"
