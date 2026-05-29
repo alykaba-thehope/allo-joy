@@ -1,5 +1,5 @@
 variable "region" {
-  description = "AWS region — Cape Town (closest to West Africa)"
+  description = "AWS region"
   default     = "af-south-1"
 }
 
@@ -15,7 +15,7 @@ variable "app_name" {
 
 variable "db_instance_class" {
   description = "RDS instance type"
-  default     = "db.t4g.small"
+  default     = "db.t3.micro"
 }
 
 variable "db_password" {

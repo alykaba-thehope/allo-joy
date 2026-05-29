@@ -10,21 +10,33 @@ concurrency:
 
 env:
   AWS_REGION:     af-south-1
-  ECR_REPOSITORY: allojoy-api
-  ECS_CLUSTER:    allojoy-prod
-  ECS_SERVICE:    allojoy-api
+  ECR_REPOSITORY: allojoy-prod-api
+  ECS_CLUSTER:    allojoy-prod-cluster
+  ECS_SERVICE:    allojoy-prod-api
   CONTAINER_NAME: allojoy-api
 
 jobs:
-  # ── Tests obligatoires avant déploiement ─────────────────────────────────────
-  test:
-    uses: ./.github/workflows/ci.yml
+  # ── Typecheck avant déploiement ───────────────────────────────────────────────
+  typecheck:
+    name: TypeScript Check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      - run: npm ci
+      - run: npm run typecheck -w @allo-joy/api
+      - run: npm run typecheck -w @allo-joy/agent-web
+      - run: npm run typecheck -w @allo-joy/supervisor-web
+      - run: npm run typecheck -w @allo-joy/provider-web
 
   # ── Build & Push image Docker → ECR ──────────────────────────────────────────
   build-push:
     name: Build & Push to ECR
     runs-on: ubuntu-latest
-    needs: test
+    needs: typecheck
     outputs:
       image: ${{ steps.build.outputs.image }}
 
@@ -62,33 +74,11 @@ jobs:
             .
           echo "image=$IMAGE" >> "$GITHUB_OUTPUT"
 
-  # ── Migrations Prisma ─────────────────────────────────────────────────────────
-  migrate:
-    name: Prisma Migrate
-    runs-on: ubuntu-latest
-    needs: build-push
-    environment: production
-
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-          cache: 'npm'
-
-      - run: npm ci
-
-      - name: Run migrations
-        env:
-          DATABASE_URL: ${{ secrets.DATABASE_URL }}
-        run: npm run db:migrate:prod -w @allo-joy/api
-
   # ── Deploy sur ECS Fargate ────────────────────────────────────────────────────
   deploy:
     name: Deploy to ECS
     runs-on: ubuntu-latest
-    needs: [build-push, migrate]
+    needs: build-push
     environment: production
 
     steps:
@@ -119,16 +109,16 @@ jobs:
       - name: Deploy to ECS
         uses: aws-actions/amazon-ecs-deploy-task-definition@v1
         with:
-          task-definition:        ${{ steps.task-def.outputs.task-definition }}
-          service:                ${{ env.ECS_SERVICE }}
-          cluster:                ${{ env.ECS_CLUSTER }}
+          task-definition:            ${{ steps.task-def.outputs.task-definition }}
+          service:                    ${{ env.ECS_SERVICE }}
+          cluster:                    ${{ env.ECS_CLUSTER }}
           wait-for-service-stability: true
 
   # ── Build & Deploy apps web → S3 + CloudFront ────────────────────────────────
   deploy-web:
     name: Deploy Web Apps
     runs-on: ubuntu-latest
-    needs: test
+    needs: typecheck
     environment: production
 
     steps:
@@ -143,7 +133,7 @@ jobs:
 
       - name: Build all web apps
         env:
-          VITE_API_URL: https://api.allojoy.gn
+          VITE_API_URL: http://allojoy-prod-alb-1888560271.af-south-1.elb.amazonaws.com
         run: |
           npm run build -w @allo-joy/agent-web
           npm run build -w @allo-joy/supervisor-web
@@ -159,35 +149,35 @@ jobs:
       - name: Deploy agent-web → S3
         run: |
           aws s3 sync apps/agent-web/dist \
-            s3://${{ secrets.S3_BUCKET_AGENT }} \
+            s3://${{ secrets.S3_AGENT }} \
             --delete --cache-control "max-age=31536000,immutable"
           aws s3 cp apps/agent-web/dist/index.html \
-            s3://${{ secrets.S3_BUCKET_AGENT }}/index.html \
+            s3://${{ secrets.S3_AGENT }}/index.html \
             --cache-control "no-cache,no-store,must-revalidate"
 
       - name: Deploy supervisor-web → S3
         run: |
           aws s3 sync apps/supervisor-web/dist \
-            s3://${{ secrets.S3_BUCKET_SUPERVISOR }} \
+            s3://${{ secrets.S3_SUPERVISOR }} \
             --delete --cache-control "max-age=31536000,immutable"
           aws s3 cp apps/supervisor-web/dist/index.html \
-            s3://${{ secrets.S3_BUCKET_SUPERVISOR }}/index.html \
+            s3://${{ secrets.S3_SUPERVISOR }}/index.html \
             --cache-control "no-cache,no-store,must-revalidate"
 
       - name: Deploy provider-web → S3
         run: |
           aws s3 sync apps/provider-web/dist \
-            s3://${{ secrets.S3_BUCKET_PROVIDER }} \
+            s3://${{ secrets.S3_PROVIDER }} \
             --delete --cache-control "max-age=31536000,immutable"
           aws s3 cp apps/provider-web/dist/index.html \
-            s3://${{ secrets.S3_BUCKET_PROVIDER }}/index.html \
+            s3://${{ secrets.S3_PROVIDER }}/index.html \
             --cache-control "no-cache,no-store,must-revalidate"
 
       - name: Invalidate CloudFront caches
         run: |
           aws cloudfront create-invalidation \
-            --distribution-id ${{ secrets.CF_DIST_AGENT }}     --paths "/*"
+            --distribution-id ${{ secrets.CF_DIST_AGENT }}      --paths "/*"
           aws cloudfront create-invalidation \
-            --distribution-id ${{ secrets.CF_DIST_SUPERVISOR }} --paths "/*"
+            --distribution-id ${{ secrets.CF_DIST_SUPERVISOR }}  --paths "/*"
           aws cloudfront create-invalidation \
-            --distribution-id ${{ secrets.CF_DIST_PROVIDER }}   --paths "/*"
+            --distribution-id ${{ secrets.CF_DIST_PROVIDER }}    --paths "/*"

@@ -9,8 +9,9 @@ resource "aws_db_parameter_group" "postgres16" {
   family = "postgres16"
 
   parameter {
-    name  = "shared_preload_libraries"
-    value = "pg_stat_statements"
+    name         = "shared_preload_libraries"
+    value        = "pg_stat_statements"
+    apply_method = "pending-reboot"
   }
 }
 
@@ -18,7 +19,7 @@ resource "aws_db_instance" "postgres" {
   identifier = "${local.prefix}-db"
 
   engine         = "postgres"
-  engine_version = "16.3"
+  engine_version = "16"
   instance_class = var.db_instance_class
 
   db_name  = "allojoy"
@@ -34,19 +35,14 @@ resource "aws_db_instance" "postgres" {
   storage_type          = "gp3"
   storage_encrypted     = true
 
-  backup_retention_period = 7
-  backup_window           = "03:00-04:00"
+  backup_retention_period = 0
   maintenance_window      = "Mon:04:00-Mon:05:00"
 
-  deletion_protection      = true
-  skip_final_snapshot      = false
-  final_snapshot_identifier = "${local.prefix}-final-snapshot"
-
-  performance_insights_enabled = true
+  deletion_protection = false
+  skip_final_snapshot = true
 
   lifecycle {
-    prevent_destroy = true
-    ignore_changes  = [password]
+    ignore_changes = [password]
   }
 }
 
@@ -59,7 +55,7 @@ resource "aws_elasticache_subnet_group" "main" {
 resource "aws_elasticache_replication_group" "redis" {
   replication_group_id       = "${local.prefix}-redis"
   description                = "AlloJoy Redis cache"
-  node_type                  = "cache.t4g.micro"
+  node_type                  = "cache.t3.micro"
   num_cache_clusters         = 1
   automatic_failover_enabled = false
   engine_version             = "7.1"
@@ -71,7 +67,4 @@ resource "aws_elasticache_replication_group" "redis" {
   at_rest_encryption_enabled = true
   transit_encryption_enabled = false
 
-  lifecycle {
-    prevent_destroy = true
-  }
 }

@@ -23,8 +23,12 @@ resource "aws_ecs_cluster_capacity_providers" "main" {
 resource "aws_iam_role" "ecs_task_execution" {
   name = "${local.prefix}-ecs-execution"
   assume_role_policy = jsonencode({
-    Version   = "2012-10-17"
-    Statement = [{ Action = "sts:AssumeRole"; Effect = "Allow"; Principal = { Service = "ecs-tasks.amazonaws.com" } }]
+    Version = "2012-10-17"
+    Statement = [{
+      Action    = "sts:AssumeRole"
+      Effect    = "Allow"
+      Principal = { Service = "ecs-tasks.amazonaws.com" }
+    }]
   })
 }
 
@@ -49,8 +53,12 @@ resource "aws_iam_role_policy" "ecs_secrets" {
 resource "aws_iam_role" "ecs_task" {
   name = "${local.prefix}-ecs-task"
   assume_role_policy = jsonencode({
-    Version   = "2012-10-17"
-    Statement = [{ Action = "sts:AssumeRole"; Effect = "Allow"; Principal = { Service = "ecs-tasks.amazonaws.com" } }]
+    Version = "2012-10-17"
+    Statement = [{
+      Action    = "sts:AssumeRole"
+      Effect    = "Allow"
+      Principal = { Service = "ecs-tasks.amazonaws.com" }
+    }]
   })
 }
 
@@ -71,26 +79,26 @@ resource "aws_ecs_task_definition" "api" {
   task_role_arn            = aws_iam_role.ecs_task.arn
 
   container_definitions = jsonencode([{
-    name  = var.app_name == "allojoy" ? "allojoy-api" : "${local.prefix}-api"
+    name  = "allojoy-api"
     image = "${aws_ecr_repository.api.repository_url}:latest"
-    portMappings = [{ containerPort = 3000; protocol = "tcp" }]
+    portMappings = [{ containerPort = 3000, protocol = "tcp" }]
 
     environment = [
-      { name = "NODE_ENV";   value = "production" },
-      { name = "PORT";       value = "3000" },
-      { name = "LOG_LEVEL";  value = "info" },
-      { name = "AFRICASTALKING_USERNAME"; value = var.africastalking_username },
+      { name = "NODE_ENV",               value = "production" },
+      { name = "PORT",                   value = "3000" },
+      { name = "LOG_LEVEL",              value = "info" },
+      { name = "AFRICASTALKING_USERNAME", value = var.africastalking_username },
     ]
 
     secrets = [
-      { name = "DATABASE_URL";              valueFrom = aws_ssm_parameter.database_url.arn },
-      { name = "REDIS_URL";                 valueFrom = aws_ssm_parameter.redis_url.arn },
-      { name = "JWT_SECRET";                valueFrom = aws_ssm_parameter.jwt_secret.arn },
-      { name = "AFRICASTALKING_API_KEY";    valueFrom = aws_ssm_parameter.africastalking_key.arn },
-      { name = "GRAPHHOPPER_URL";           valueFrom = aws_ssm_parameter.graphhopper_url.arn },
-      { name = "WHATSAPP_TOKEN";            valueFrom = aws_ssm_parameter.whatsapp_token.arn },
-      { name = "WHATSAPP_PHONE_ID";         valueFrom = aws_ssm_parameter.whatsapp_phone_id.arn },
-      { name = "WHATSAPP_VERIFY_TOKEN";     valueFrom = aws_ssm_parameter.whatsapp_verify_token.arn },
+      { name = "DATABASE_URL",           valueFrom = aws_ssm_parameter.database_url.arn },
+      { name = "REDIS_URL",              valueFrom = aws_ssm_parameter.redis_url.arn },
+      { name = "JWT_SECRET",             valueFrom = aws_ssm_parameter.jwt_secret.arn },
+      { name = "AFRICASTALKING_API_KEY", valueFrom = aws_ssm_parameter.africastalking_key.arn },
+      { name = "GRAPHHOPPER_URL",        valueFrom = aws_ssm_parameter.graphhopper_url.arn },
+      { name = "WHATSAPP_TOKEN",         valueFrom = aws_ssm_parameter.whatsapp_token.arn },
+      { name = "WHATSAPP_PHONE_ID",      valueFrom = aws_ssm_parameter.whatsapp_phone_id.arn },
+      { name = "WHATSAPP_VERIFY_TOKEN",  valueFrom = aws_ssm_parameter.whatsapp_verify_token.arn },
     ]
 
     logConfiguration = {
@@ -137,7 +145,7 @@ resource "aws_ecs_service" "api" {
     rollback = true
   }
 
-  depends_on = [aws_lb_listener.https]
+  depends_on = [aws_lb_listener.http]
 
   lifecycle {
     ignore_changes = [desired_count, task_definition]

@@ -46,7 +46,7 @@ output "s3_bucket_names" {
   }
 }
 
-output "acm_certificate_arn" {
-  description = "ACM certificate ARN (wildcard *.allojoy.gn) — referenced by CloudFront distributions"
-  value       = aws_acm_certificate.api.arn
+output "alb_url" {
+  description = "URL HTTP de l'API (HTTPS ajouté après config domaine)"
+  value       = "http://${aws_lb.main.dns_name}"
 }

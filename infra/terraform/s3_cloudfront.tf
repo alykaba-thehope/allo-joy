@@ -1,10 +1,11 @@
 # ── S3 + CloudFront pour les 3 apps web ──────────────────────────────────────
+# Note: domaines custom (agent.allojoy.gn etc.) ajoutés après enregistrement du domaine
 
 locals {
   web_apps = {
-    agent      = { subdomain = "agent",         bucket_suffix = "agent" }
-    supervisor = { subdomain = "superviseur",    bucket_suffix = "supervisor" }
-    provider   = { subdomain = "prestataires",   bucket_suffix = "provider" }
+    agent      = { bucket_suffix = "agent" }
+    supervisor = { bucket_suffix = "supervisor" }
+    provider   = { bucket_suffix = "provider" }
   }
 }
 
@@ -12,9 +13,6 @@ resource "aws_s3_bucket" "web" {
   for_each = local.web_apps
   bucket   = "${local.prefix}-web-${each.value.bucket_suffix}"
 
-  lifecycle {
-    prevent_destroy = true
-  }
 }
 
 resource "aws_s3_bucket_public_access_block" "web" {
@@ -35,11 +33,10 @@ resource "aws_cloudfront_origin_access_control" "web" {
 }
 
 resource "aws_cloudfront_distribution" "web" {
-  for_each = local.web_apps
+  for_each            = local.web_apps
   enabled             = true
   is_ipv6_enabled     = true
   default_root_object = "index.html"
-  aliases             = ["${each.value.subdomain}.${var.domain_name}"]
   price_class         = "PriceClass_All"
 
   origin {
@@ -57,7 +54,7 @@ resource "aws_cloudfront_distribution" "web" {
 
     forwarded_values {
       query_string = false
-      cookies      { forward = "none" }
+      cookies { forward = "none" }
     }
 
     min_ttl     = 0
@@ -65,7 +62,7 @@ resource "aws_cloudfront_distribution" "web" {
     max_ttl     = 31536000
   }
 
-  # SPA routing — renvoyer index.html sur 404
+  # SPA routing — renvoyer index.html sur 404/403
   custom_error_response {
     error_code            = 404
     response_code         = 200
@@ -79,10 +76,9 @@ resource "aws_cloudfront_distribution" "web" {
     error_caching_min_ttl = 0
   }
 
+  # Cert CloudFront par défaut — remplacer par ACM us-east-1 après config domaine
   viewer_certificate {
-    acm_certificate_arn      = aws_acm_certificate.api.arn
-    ssl_support_method       = "sni-only"
-    minimum_protocol_version = "TLSv1.2_2021"
+    cloudfront_default_certificate = true
   }
 
   restrictions {
@@ -96,7 +92,7 @@ resource "aws_s3_bucket_policy" "web" {
   bucket   = aws_s3_bucket.web[each.key].id
 
   policy = jsonencode({
-    Version   = "2012-10-17"
+    Version = "2012-10-17"
     Statement = [{
       Effect    = "Allow"
       Principal = { Service = "cloudfront.amazonaws.com" }
