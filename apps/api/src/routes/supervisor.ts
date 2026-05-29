@@ -31,7 +31,7 @@ export async function supervisorRoutes(app: FastifyInstance) {
       prisma.ticket.count({
         where: {
           createdAt: { gte: startOfDay },
-          statut: { in: ['RESOLU', 'CLOTURE'] },
+          statut: { in: ['RESOLU', 'FERME'] },
         },
       }),
 
@@ -83,7 +83,7 @@ export async function supervisorRoutes(app: FastifyInstance) {
         prenom: true,
         nomFamille: true,
         role: true,
-        languesParlees: true,
+        langues: true,
         lastSeenAt: true,
         tickets: {
           where: { createdAt: { gte: startOfDay } },
@@ -98,7 +98,7 @@ export async function supervisorRoutes(app: FastifyInstance) {
       prenom:       a.prenom,
       nomFamille:   a.nomFamille,
       role:         a.role,
-      langue:       a.languesParlees ?? [],
+      langue:       a.langues ?? [],
       lastSeenAt:   a.lastSeenAt?.getTime() ?? null,
       ticketsToday: a.tickets.length,
     })))

@@ -76,7 +76,7 @@ export async function authRoutes(app: FastifyInstance) {
         nomFamille:       provider.nomComplet.split(' ').slice(1).join(' ') ?? '',
         telephone:        provider.telephonePrincipal,
         categorieService: provider.categoriePrincipale,
-        langues:          provider.languesParlees ?? [],
+        langues:          [],
         noteMoyenne:      Number(provider.noteMoyenne),
         tauxReussite,
         totalMissions:    provider.nbMissionsTotales,

@@ -190,7 +190,7 @@ export async function providerPortalRoutes(app: FastifyInstance) {
           },
           include: {
             citizen: { select: { telephone: true, prenom: true } },
-            ratings: { select: { note: true }, take: 1, orderBy: { createdAt: 'desc' } },
+            rating: { select: { note: true } },
           },
           orderBy: { createdAt: 'desc' },
           take: pageSize,
