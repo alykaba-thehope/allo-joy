@@ -27,6 +27,7 @@ jobs:
           node-version: '20'
           cache: 'npm'
       - run: npm ci
+      - run: npm run build -w @allo-joy/types
       - run: npm run db:generate -w @allo-joy/api
       - run: npm run typecheck -w @allo-joy/api
       - run: npm run typecheck -w @allo-joy/agent-web
