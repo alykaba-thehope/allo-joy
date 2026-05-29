@@ -3,7 +3,10 @@
   "version": "1.0.0",
   "private": true,
   "workspaces": [
-    "apps/*",
+    "apps/api",
+    "apps/agent-web",
+    "apps/supervisor-web",
+    "apps/provider-web",
     "packages/*"
   ],
   "scripts": {
