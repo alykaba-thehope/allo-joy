@@ -58,15 +58,6 @@ jobs:
           echo "AWS_SECRET_ACCESS_KEY=${{ secrets.AWS_SECRET_ACCESS_KEY }}" >> $GITHUB_ENV
           echo "AWS_DEFAULT_REGION=af-south-1"                              >> $GITHUB_ENV
 
-      - name: Verify AWS credentials
-        run: |
-          if [ -z "$AWS_ACCESS_KEY_ID" ]; then
-            echo "❌ AWS_ACCESS_KEY_ID is empty — secret not set in GitHub"
-            exit 1
-          fi
-          echo "✅ AWS_ACCESS_KEY_ID set (${#AWS_ACCESS_KEY_ID} chars)"
-          aws sts get-caller-identity --region us-east-1
-
       - name: Login to Amazon ECR
         run: |
           aws ecr get-login-password --region af-south-1 \
@@ -160,15 +151,6 @@ jobs:
           echo "AWS_ACCESS_KEY_ID=${{ secrets.AWS_ACCESS_KEY_ID }}"         >> $GITHUB_ENV
           echo "AWS_SECRET_ACCESS_KEY=${{ secrets.AWS_SECRET_ACCESS_KEY }}" >> $GITHUB_ENV
           echo "AWS_DEFAULT_REGION=af-south-1"                              >> $GITHUB_ENV
-
-      - name: Verify AWS credentials
-        run: |
-          if [ -z "$AWS_ACCESS_KEY_ID" ]; then
-            echo "❌ AWS_ACCESS_KEY_ID is empty — secret not set in GitHub"
-            exit 1
-          fi
-          echo "✅ AWS_ACCESS_KEY_ID set (${#AWS_ACCESS_KEY_ID} chars)"
-          aws sts get-caller-identity --region us-east-1
 
       - name: Deploy agent-web → S3
         run: |
